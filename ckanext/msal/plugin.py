@@ -2,8 +2,8 @@ import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 import logging
 import ckan.model as model
-from ckan.common import config, request, g, session
-from flask import current_app as app, Blueprint, redirect, abort, url_for
+from ckan.common import request, session
+from flask import current_app as app, Blueprint, redirect
 import ckan.lib.helpers as h
 import msal
 from . import msal_config
@@ -19,43 +19,43 @@ application = msal.ConfidentialClientApplication(
 
 def msal_login():
     '''Make call to authorization_url to authenticate user and get authorization code.'''
-    log.debug('Starting MSAL login process')
+    #log.debug('Starting MSAL login process')
     authorization_url = application.get_authorization_request_url(
         msal_config.SCOPE,
         redirect_uri=msal_config.REDIRECT_URI
     )
-    log.error(authorization_url)
-    log.debug('MSAL login initiated')
+    #log.error(authorization_url)
+    #log.debug('MSAL login initiated')
     return redirect(authorization_url)
 
 def get_a_token():
     '''Handle Azure AD callback.'''
     try:
-        log.debug("Starting get_a_token function")
+        #log.debug("Starting get_a_token function")
         code = request.args['code']
-        log.debug(f"Authorization code received: {code}")
+        #log.debug(f"Authorization code received: {code}")
         
         result = application.acquire_token_by_authorization_code(
             code,
             scopes=msal_config.SCOPE,
             redirect_uri=msal_config.REDIRECT_URI
         )
-        log.debug(f"Token acquisition result: {result}")
+        #log.debug(f"Token acquisition result: {result}")
 
         user = result.get("id_token_claims", {}).get("preferred_username")  # email
-        log.debug(f"User email from token: {user}")
+        #log.debug(f"User email from token: {user}")
         
         user_name = user.lower().replace('.', '_').split('@')[0].strip()  # ckan's username
-        log.debug(f"CKAN username: {user_name}")
+        #log.debug(f"CKAN username: {user_name}")
 
         user_obj = model.User.get(user_name)
-        log.debug(f"User object from CKAN: {user_obj}")
+        #log.debug(f"User object from CKAN: {user_obj}")
 
         if not user_obj:
             # Create a new user in CKAN
             user_obj = model.User(name=user_name, email=user.lower(), password='default_password')
             user_obj.save()
-            log.info(f"Created new user in CKAN: {user_name}")
+            #log.info(f"Created new user in CKAN: {user_name}")
         else:
             # Activate the user if not already active
             if user_obj.state != 'active':
@@ -63,24 +63,23 @@ def get_a_token():
                 user_obj.save()
                 log.info(f"Activated user: {user_name}")
 
-        log.debug(f"User {user} retrieved with username {user_name}")
+        #log.debug(f"User {user} retrieved with username {user_name}")
 
         user_id = user_obj.id
-        log.debug(f"User ID: {user_id}")        
+        #log.debug(f"User ID: {user_id}")        
 
         # Set session for the user        
         session["_user_id"] = user_name
         session.save()
-        log.debug(f"Session Object: {session}")
-        log.debug(f"Session set for user: {user_name}")
+        #log.debug(f"Session Object: {session}")
+        #log.debug(f"Session set for user: {user_name}")
         
         
         # Redirect to dataset
         site_url = app.config.get('ckan.site_url')
         resp = redirect(f'{site_url}/dashboard/datasets')
-        log.info(f"Redirecting to {site_url}/dashboard/datasets") 
 
-        log.debug("Redirecting to dataset")
+        #log.debug("Redirecting to dataset")
         return resp
     except ValueError as e:
         log.error('ValueError: {}'.format(repr(e)))
@@ -110,19 +109,9 @@ class MsalPlugin(plugins.SingletonPlugin):
 
     def identify(self):
         pass
-
-    def abort(self, status_code, detail, headers=None, comment=None):
-        if headers is None:
-            headers = {}
-        if detail is None:
-            detail = ""
-        if comment is None:
-            comment = ""
-        return status_code, detail, headers, comment
-
+    
     def logout(self):
-      try:
-        # Asumiendo que quieres redirigir al usuario a la página de logout de MS
+      try:        
         session.clear()
         msad_url = msal_config.AUTHORITY
         site_url = app.config.get('ckan.site_url')
@@ -139,7 +128,6 @@ class MsalPlugin(plugins.SingletonPlugin):
         rules = [
             ('/msal/login', 'msal_login', msal_login),
             ('/getAToken', 'get_a_token', get_a_token)
-            # ('/user/logged_out', 'logged_out', override_logged_out)
         ]
         for rule in rules:
             blueprint.add_url_rule(*rule)
